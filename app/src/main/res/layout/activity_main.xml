@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="28dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="墨屏待机"
+            android:textColor="#000000"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="还没更新过"
+            android:textColor="#000000"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="更新时机：按下电源键退出待机（亮屏）时更新一次；开机时和点「立即应用」也会更新。"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/modeGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/rbFile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="本地图片文件" />
+
+            <RadioButton
+                android:id="@+id/rbUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="网络图片 URL" />
+
+            <RadioButton
+                android:id="@+id/rbText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="文字模板（按 e-ink 风格渲染）" />
+        </RadioGroup>
+
+        <EditText
+            android:id="@+id/filePath"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="本地图片绝对路径，如 /sdcard/InkStandby/standby.png"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/pickFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="选择图片文件（复制到 App 目录）" />
+
+        <EditText
+            android:id="@+id/url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://example.com/standby.png"
+            android:inputType="textUri"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/textTemplate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="支持变量：{date} {time} {weekday} {battery}"
+            android:minLines="6"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/applyNow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="立即应用" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="保存设置" />
+
+        <TextView
+            android:id="@+id/tips"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:textSize="12sp"
+            android:textColor="#555555" />
+    </LinearLayout>
+</ScrollView>
