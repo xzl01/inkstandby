@@ -46,6 +46,7 @@ public final class WallpaperApplier {
 
     private static final Object LOCK = new Object();
     private static long lastInvokeAt = 0;
+    private static final long INKQUOTE_POOL_MAX_AGE_MS = 24L * 60 * 60 * 1000;
 
     public interface Callback {
         void done(boolean ok, String message);
@@ -196,8 +197,10 @@ public final class WallpaperApplier {
 
     private static JSONObject renderInkQuoteObject(Context ctx) throws Exception {
         JSONObject quote = null;
+        boolean online = false;
         try {
             quote = fetchInkQuote(ctx);
+            online = quote != null;
             if (quote != null) {
                 try (FileOutputStream fos = new FileOutputStream(inkquoteCacheFile(ctx))) {
                     fos.write(quote.toString().getBytes(StandardCharsets.UTF_8));
@@ -206,9 +209,139 @@ public final class WallpaperApplier {
         } catch (Throwable t) {
             Log.w(TAG, "InkQuote fetch failed, fallback: " + t);
         }
+
+        // 在线时顺便把整批可离线用的数据缓存到本地（默认 24 小时刷新一次）
+        if (online && needRefreshInkQuotePool(ctx)) {
+            try {
+                int n = fetchAndStoreInkQuotePool(ctx);
+                Log.i(TAG, "InkQuote pool refreshed: " + n);
+            } catch (Throwable t) {
+                Log.w(TAG, "InkQuote pool refresh failed: " + t);
+            }
+        }
+
+        if (quote == null) quote = pickInkQuoteFromPool(ctx);
         if (quote == null) quote = readInkQuoteCache(ctx);
         if (quote == null) quote = bundledInkQuote(ctx);
         return quote;
+    }
+
+    // ------------------------------------------------------------ InkQuote offline pool
+
+    private static File inkquotePoolFile(Context ctx) {
+        return new File(ctx.getFilesDir(), "inkquote_pool.json");
+    }
+
+    private static boolean needRefreshInkQuotePool(Context ctx) {
+        File f = inkquotePoolFile(ctx);
+        if (!f.exists() || f.length() < 2) return true;
+        return System.currentTimeMillis() - f.lastModified() > INKQUOTE_POOL_MAX_AGE_MS;
+    }
+
+    private static String inkquoteQuery(Context ctx, boolean includeFields) {
+        List<String> params = new ArrayList<>();
+        String category = Prefs.inkquoteCategory(ctx);
+        if (category != null && !category.isEmpty()) params.add("category=" + category);
+        if (Prefs.inkquoteVerified(ctx)) params.add("verified=1");
+        if (includeFields) params.add("fields=text,work,author,speaker,location,category,source_url");
+        return String.join("&", params);
+    }
+
+    /** 拉取整批数据保存到 files/inkquote_pool.json，返回条数。 */
+    private static int fetchAndStoreInkQuotePool(Context ctx) throws Exception {
+        String base = Prefs.inkquoteUrl(ctx).trim();
+        if (base.isEmpty()) throw new IllegalStateException("未设置 InkQuote 服务地址");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String query = inkquoteQuery(ctx, true);
+        String url = base + "/api/export.json" + (query.isEmpty() ? "" : "?" + query);
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("User-Agent", "InkStandby/1.3");
+            int code = conn.getResponseCode();
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            String body = readAll(conn.getInputStream());
+            JSONArray arr = new JSONArray(body);
+            List<JSONObject> valid = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject q = arr.optJSONObject(i);
+                if (q != null && !q.optString("text", "").isEmpty()
+                        && !q.optString("work", "").isEmpty()) {
+                    valid.add(q);
+                }
+            }
+            if (valid.isEmpty()) throw new IllegalStateException("InkQuote 返回空数据集");
+            JSONArray out = new JSONArray();
+            for (JSONObject q : valid) out.put(q);
+            File target = inkquotePoolFile(ctx);
+            File tmp = new File(target.getAbsolutePath() + ".tmp");
+            try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                fos.write(out.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            if (!tmp.renameTo(target)) {
+                try (FileOutputStream fos = new FileOutputStream(target)) {
+                    fos.write(out.toString().getBytes(StandardCharsets.UTF_8));
+                }
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
+            return valid.size();
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static JSONObject pickInkQuoteFromPool(Context ctx) {
+        File f = inkquotePoolFile(ctx);
+        if (!f.exists() || f.length() < 2) return null;
+        try {
+            JSONArray arr = new JSONArray(readAll(new java.io.FileInputStream(f)));
+            String category = Prefs.inkquoteCategory(ctx);
+            List<JSONObject> pool = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject q = arr.optJSONObject(i);
+                if (q == null) continue;
+                if (category != null && !category.isEmpty()
+                        && !category.equals(q.optString("category"))) continue;
+                if (Prefs.inkquoteVerified(ctx) && !q.optBoolean("verified", false)) continue;
+                pool.add(q);
+            }
+            if (pool.isEmpty()) return null;
+            int index = Prefs.inkquoteDaily(ctx)
+                    ? (int) Math.floorMod(LocalDate.now().toEpochDay(), pool.size())
+                    : new Random().nextInt(pool.size());
+            return pool.get(index);
+        } catch (Throwable t) {
+            Log.w(TAG, "pick from InkQuote pool failed: " + t);
+            return null;
+        }
+    }
+
+    /** 返回给设置页显示的离线缓存信息。 */
+    static String inkquoteCacheInfo(Context ctx) {
+        File pool = inkquotePoolFile(ctx);
+        if (!pool.exists() || pool.length() < 2) return "离线缓存：还没有（联网后自动缓存）";
+        int count = 0;
+        try {
+            count = new JSONArray(readAll(new java.io.FileInputStream(pool))).length();
+        } catch (Throwable ignored) {}
+        String when = new SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(new Date(pool.lastModified()));
+        return "离线缓存：" + count + " 条 · 更新于 " + when;
+    }
+
+    /** 手动刷新离线缓存（设置页按钮）。 */
+    public static void refreshInkQuotePoolAsync(final Context ctx, final Callback cb) {
+        new Thread(() -> {
+            try {
+                int n = fetchAndStoreInkQuotePool(ctx);
+                if (cb != null) cb.done(true, "已缓存 " + n + " 条");
+            } catch (Throwable t) {
+                Log.w(TAG, "refresh InkQuote pool failed: " + t);
+                if (cb != null) cb.done(false, t.getClass().getSimpleName() + ": " + t.getMessage());
+            }
+        }, "inkstandby-pool").start();
     }
 
     private static Bitmap renderInkQuote(Context ctx) throws Exception {

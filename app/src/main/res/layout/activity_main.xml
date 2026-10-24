@@ -183,6 +183,21 @@
                 android:text="测试连接并预览" />
 
             <TextView
+                android:id="@+id/inkquoteCacheInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="离线缓存：还没有（联网后自动缓存）"
+                android:textColor="#333333"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/refreshInkQuoteCache"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="刷新本地缓存（整批下载）" />
+
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="连不上时自动使用上一次缓存；再失败则用内置的 21 条离线数据。"

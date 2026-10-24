@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private RadioGroup inkquoteCategoryGroup;
     private RadioButton rbInkAll, rbInkBook, rbInkInternet, rbInkAnime, rbInkMovie;
     private CheckBox cbInkVerified, cbInkDaily;
+    private TextView inkquoteCacheInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +66,7 @@ public class MainActivity extends Activity {
         rbInkMovie = findViewById(R.id.rbInkMovie);
         cbInkVerified = findViewById(R.id.cbInkVerified);
         cbInkDaily = findViewById(R.id.cbInkDaily);
+        inkquoteCacheInfo = findViewById(R.id.inkquoteCacheInfo);
 
         filePath = findViewById(R.id.filePath);
         url = findViewById(R.id.url);
@@ -103,6 +105,15 @@ public class MainActivity extends Activity {
             status.setText("正在从 InkQuote 获取…");
             applyNow();
         });
+        findViewById(R.id.refreshInkQuoteCache).setOnClickListener(v -> {
+            savePrefs();
+            status.setText("正在缓存整批数据…");
+            WallpaperApplier.refreshInkQuotePoolAsync(this, (ok, msg) -> runOnUiThread(() -> {
+                status.setText((ok ? "✓ " : "✗ ") + msg);
+                updateInkQuoteCacheInfo();
+                toast(ok ? msg : "缓存失败：" + msg);
+            }));
+        });
         findViewById(R.id.applyNow).setOnClickListener(v -> {
             savePrefs();
             applyNow();
@@ -129,6 +140,11 @@ public class MainActivity extends Activity {
         super.onResume();
         status.setText("上次：" + WallpaperApplier.lastStatus(this));
         loadPreview();
+        updateInkQuoteCacheInfo();
+    }
+
+    private void updateInkQuoteCacheInfo() {
+        inkquoteCacheInfo.setText(WallpaperApplier.inkquoteCacheInfo(this));
     }
 
     private void loadPrefs() {
@@ -164,6 +180,7 @@ public class MainActivity extends Activity {
         inkquoteCategoryGroup.check(categoryId);
         cbInkVerified.setChecked(Prefs.inkquoteVerified(this));
         cbInkDaily.setChecked(Prefs.inkquoteDaily(this));
+        updateInkQuoteCacheInfo();
 
         status.setText("上次：" + WallpaperApplier.lastStatus(this));
     }
@@ -215,6 +232,7 @@ public class MainActivity extends Activity {
         WallpaperApplier.applyAsync(this, true, (ok, msg) -> runOnUiThread(() -> {
             status.setText((ok ? "✓ " : "✗ ") + msg);
             loadPreview();
+            updateInkQuoteCacheInfo();
             toast(ok ? "已更新待机图" : "失败：" + msg);
         }));
     }
