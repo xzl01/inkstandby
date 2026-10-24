@@ -10,6 +10,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
@@ -26,13 +27,18 @@ public class MainActivity extends Activity {
     private TextView status, tips;
     private ImageView preview;
     private RadioGroup modeGroup, fontGroup, alignGroup, fitGroup, bgGroup;
-    private RadioButton rbFile, rbUrl, rbText, rbQuotes;
+    private RadioButton rbFile, rbUrl, rbText, rbQuotes, rbInkQuote;
     private RadioButton rbFontSmall, rbFontNormal, rbFontLarge;
     private RadioButton rbAlignCenter, rbAlignLeft;
     private RadioButton rbFit, rbCrop, rbStretch;
     private RadioButton rbBgWhite, rbBgBlack;
     private CheckBox cbFooter, cbSkip;
     private EditText filePath, url, textTemplate, quotesText;
+    private LinearLayout inkquoteBox;
+    private EditText inkquoteUrl;
+    private RadioGroup inkquoteCategoryGroup;
+    private RadioButton rbInkAll, rbInkBook, rbInkInternet, rbInkAnime, rbInkMovie;
+    private CheckBox cbInkVerified, cbInkDaily;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +54,17 @@ public class MainActivity extends Activity {
         rbUrl = findViewById(R.id.rbUrl);
         rbText = findViewById(R.id.rbText);
         rbQuotes = findViewById(R.id.rbQuotes);
+        rbInkQuote = findViewById(R.id.rbInkQuote);
+        inkquoteBox = findViewById(R.id.inkquoteBox);
+        inkquoteUrl = findViewById(R.id.inkquoteUrl);
+        inkquoteCategoryGroup = findViewById(R.id.inkquoteCategoryGroup);
+        rbInkAll = findViewById(R.id.rbInkAll);
+        rbInkBook = findViewById(R.id.rbInkBook);
+        rbInkInternet = findViewById(R.id.rbInkInternet);
+        rbInkAnime = findViewById(R.id.rbInkAnime);
+        rbInkMovie = findViewById(R.id.rbInkMovie);
+        cbInkVerified = findViewById(R.id.cbInkVerified);
+        cbInkDaily = findViewById(R.id.cbInkDaily);
 
         filePath = findViewById(R.id.filePath);
         url = findViewById(R.id.url);
@@ -81,6 +98,11 @@ public class MainActivity extends Activity {
 
         findViewById(R.id.pickFile).setOnClickListener(v -> pickImage());
         findViewById(R.id.testUrl).setOnClickListener(v -> testUrl());
+        findViewById(R.id.testInkQuote).setOnClickListener(v -> {
+            savePrefs();
+            status.setText("正在从 InkQuote 获取…");
+            applyNow();
+        });
         findViewById(R.id.applyNow).setOnClickListener(v -> {
             savePrefs();
             applyNow();
@@ -95,7 +117,8 @@ public class MainActivity extends Activity {
             tips.setText("提示：亮屏自动更新由后台服务完成，通知栏有一个低优先级常驻通知。"
                     + "「立即应用（强制刷新）」可手动覆盖当前待机图。");
         } else {
-            tips.setText("亮屏自动更新已启用；内容不变时会自动跳过，减少墨水屏刷新。");
+            tips.setText("亮屏自动更新已启用；内容不变时会自动跳过，减少墨水屏刷新。"
+                    + "「引据 InkQuote」会自动带上作者《作品》·章节出处。");
         }
 
         startServiceCompat();
@@ -113,6 +136,7 @@ public class MainActivity extends Activity {
         if (Prefs.MODE_FILE.equals(mode)) modeGroup.check(R.id.rbFile);
         else if (Prefs.MODE_URL.equals(mode)) modeGroup.check(R.id.rbUrl);
         else if (Prefs.MODE_QUOTES.equals(mode)) modeGroup.check(R.id.rbQuotes);
+        else if (Prefs.MODE_INKQUOTE.equals(mode)) modeGroup.check(R.id.rbInkQuote);
         else modeGroup.check(R.id.rbText);
 
         filePath.setText(Prefs.filePath(this));
@@ -130,6 +154,17 @@ public class MainActivity extends Activity {
         bgGroup.check("black".equals(Prefs.bg(this)) ? R.id.rbBgBlack : R.id.rbBgWhite);
         cbSkip.setChecked(Prefs.skipUnchanged(this));
 
+        inkquoteUrl.setText(Prefs.inkquoteUrl(this));
+        String inkCategory = Prefs.inkquoteCategory(this);
+        int categoryId = R.id.rbInkAll;
+        if ("book".equals(inkCategory)) categoryId = R.id.rbInkBook;
+        else if ("internet".equals(inkCategory)) categoryId = R.id.rbInkInternet;
+        else if ("anime".equals(inkCategory)) categoryId = R.id.rbInkAnime;
+        else if ("movie".equals(inkCategory)) categoryId = R.id.rbInkMovie;
+        inkquoteCategoryGroup.check(categoryId);
+        cbInkVerified.setChecked(Prefs.inkquoteVerified(this));
+        cbInkDaily.setChecked(Prefs.inkquoteDaily(this));
+
         status.setText("上次：" + WallpaperApplier.lastStatus(this));
     }
 
@@ -138,6 +173,7 @@ public class MainActivity extends Activity {
         boolean u = rbUrl.isChecked();
         boolean t = rbText.isChecked();
         boolean q = rbQuotes.isChecked();
+        boolean ink = rbInkQuote.isChecked();
 
         filePath.setVisibility(f ? android.view.View.VISIBLE : android.view.View.GONE);
         findViewById(R.id.pickFile).setVisibility(f ? android.view.View.VISIBLE : android.view.View.GONE);
@@ -145,12 +181,14 @@ public class MainActivity extends Activity {
         findViewById(R.id.testUrl).setVisibility(u ? android.view.View.VISIBLE : android.view.View.GONE);
         textTemplate.setVisibility(t ? android.view.View.VISIBLE : android.view.View.GONE);
         quotesText.setVisibility(q ? android.view.View.VISIBLE : android.view.View.GONE);
+        inkquoteBox.setVisibility(ink ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
     private void savePrefs() {
         String mode = rbFile.isChecked() ? Prefs.MODE_FILE
                 : (rbUrl.isChecked() ? Prefs.MODE_URL
-                : (rbQuotes.isChecked() ? Prefs.MODE_QUOTES : Prefs.MODE_TEXT));
+                : (rbQuotes.isChecked() ? Prefs.MODE_QUOTES
+                : (rbInkQuote.isChecked() ? Prefs.MODE_INKQUOTE : Prefs.MODE_TEXT)));
         Prefs.save(this, mode,
                 filePath.getText().toString().trim(),
                 url.getText().toString().trim(),
@@ -163,6 +201,13 @@ public class MainActivity extends Activity {
         String bg = rbBgBlack.isChecked() ? "black" : "white";
         Prefs.saveOptions(this, quotesText.getText().toString(), scale, align,
                 cbFooter.isChecked(), fit, bg, cbSkip.isChecked());
+        String inkCategory = "";
+        if (rbInkBook.isChecked()) inkCategory = "book";
+        else if (rbInkInternet.isChecked()) inkCategory = "internet";
+        else if (rbInkAnime.isChecked()) inkCategory = "anime";
+        else if (rbInkMovie.isChecked()) inkCategory = "movie";
+        Prefs.saveInkQuote(this, inkquoteUrl.getText().toString().trim(), inkCategory,
+                cbInkVerified.isChecked(), cbInkDaily.isChecked());
     }
 
     private void applyNow() {

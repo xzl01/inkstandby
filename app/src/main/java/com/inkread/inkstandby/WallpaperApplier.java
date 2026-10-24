@@ -19,12 +19,17 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * 把内容渲染成 1264x1680 的待机图，并调用厂商隐藏 API
@@ -163,6 +168,8 @@ public final class WallpaperApplier {
             src = loadFromUrl(ctx);
         } else if (Prefs.MODE_QUOTES.equals(mode)) {
             src = renderText(ctx, pickQuote(ctx), true);
+        } else if (Prefs.MODE_INKQUOTE.equals(mode)) {
+            src = renderInkQuote(ctx);
         } else {
             src = renderText(ctx, Prefs.text(ctx), false);
         }
@@ -178,6 +185,203 @@ public final class WallpaperApplier {
         }
         if (list.isEmpty()) return "心静，则万物皆静。";
         return list.get(new Random().nextInt(list.size()));
+    }
+
+
+    // ------------------------------------------------------------ InkQuote
+
+    private static File inkquoteCacheFile(Context ctx) {
+        return new File(ctx.getFilesDir(), "inkquote_cache.json");
+    }
+
+    private static JSONObject renderInkQuoteObject(Context ctx) throws Exception {
+        JSONObject quote = null;
+        try {
+            quote = fetchInkQuote(ctx);
+            if (quote != null) {
+                try (FileOutputStream fos = new FileOutputStream(inkquoteCacheFile(ctx))) {
+                    fos.write(quote.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "InkQuote fetch failed, fallback: " + t);
+        }
+        if (quote == null) quote = readInkQuoteCache(ctx);
+        if (quote == null) quote = bundledInkQuote(ctx);
+        return quote;
+    }
+
+    private static Bitmap renderInkQuote(Context ctx) throws Exception {
+        JSONObject quote = renderInkQuoteObject(ctx);
+        if (quote == null) {
+            Log.w(TAG, "InkQuote unavailable, fallback to text template");
+            return renderText(ctx, Prefs.text(ctx), false);
+        }
+        return renderQuote(ctx, quote);
+    }
+
+    private static JSONObject fetchInkQuote(Context ctx) throws Exception {
+        String base = Prefs.inkquoteUrl(ctx).trim();
+        if (base.isEmpty()) throw new IllegalStateException("未设置 InkQuote 服务地址");
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        boolean daily = Prefs.inkquoteDaily(ctx);
+        StringBuilder url = new StringBuilder(base).append(daily ? "/api/daily" : "/api/random");
+        List<String> params = new ArrayList<>();
+        if (daily) {
+            params.add("date=" + LocalDate.now().toString());
+        }
+        String category = Prefs.inkquoteCategory(ctx);
+        if (category != null && !category.isEmpty()) params.add("category=" + category);
+        if (Prefs.inkquoteVerified(ctx)) params.add("verified=1");
+        params.add("fields=text,work,author,speaker,location,category,source_url");
+        url.append("?").append(String.join("&", params));
+
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url.toString()).openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("User-Agent", "InkStandby/1.2");
+            int code = conn.getResponseCode();
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            String body = readAll(conn.getInputStream());
+            JSONObject root = new JSONObject(body);
+            JSONObject q = root.optJSONObject("quote");
+            if (q == null) q = root;
+            String text = q.optString("text", "").trim();
+            if (text.isEmpty()) throw new IllegalStateException("InkQuote 返回没有 text");
+            return q;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static JSONObject readInkQuoteCache(Context ctx) {
+        File f = inkquoteCacheFile(ctx);
+        if (!f.exists()) return null;
+        try {
+            JSONObject q = new JSONObject(readAll(new java.io.FileInputStream(f)));
+            return q.optString("text", "").isEmpty() ? null : q;
+        } catch (Throwable t) {
+            Log.w(TAG, "read InkQuote cache failed: " + t);
+            return null;
+        }
+    }
+
+    /** 离线兜底：使用打包在 assets 里的 21 条数据，按日期取一条。 */
+    private static JSONObject bundledInkQuote(Context ctx) {
+        try (InputStream in = ctx.getAssets().open("inkquote/quotes.json")) {
+            JSONArray arr = new JSONArray(readAll(in));
+            String category = Prefs.inkquoteCategory(ctx);
+            List<JSONObject> pool = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject q = arr.optJSONObject(i);
+                if (q == null) continue;
+                if (category != null && !category.isEmpty()
+                        && !category.equals(q.optString("category"))) continue;
+                if (Prefs.inkquoteVerified(ctx) && !q.optBoolean("verified", false)) continue;
+                pool.add(q);
+            }
+            if (pool.isEmpty()) return null;
+            int index = (int) Math.floorMod(LocalDate.now().toEpochDay(), pool.size());
+            return pool.get(index);
+        } catch (Throwable t) {
+            Log.w(TAG, "read bundled InkQuote failed: " + t);
+            return null;
+        }
+    }
+
+    private static Bitmap renderQuote(Context ctx, JSONObject q) {
+        String text = q.optString("text", "").trim();
+        String author = q.optString("author", "").trim();
+        String work = q.optString("work", "").trim();
+        String location = q.optString("location", "").trim();
+
+        boolean dark = "black".equals(Prefs.bg(ctx));
+        int bgColor = dark ? Color.BLACK : Color.WHITE;
+        int fgColor = dark ? Color.WHITE : Color.BLACK;
+
+        Bitmap bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        c.drawColor(bgColor);
+
+        int margin = 120;
+        int maxWidth = W - margin * 2;
+        boolean footer = Prefs.footer(ctx);
+        int quoteAreaTop = 170;
+        int quoteAreaBottom = H - 420 - (footer ? 80 : 0);
+        int quoteAreaHeight = quoteAreaBottom - quoteAreaTop;
+
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(fgColor);
+        p.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        p.setSubpixelText(true);
+
+        int scale = Prefs.fontScale(ctx);
+        float factor = scale == 0 ? 0.82f : (scale == 2 ? 1.22f : 1f);
+        float size = 92f * factor;
+        List<String> lines = null;
+        while (size >= 36f) {
+            p.setTextSize(size);
+            lines = wrap(text, p, maxWidth);
+            int lineH = (int) (size * 1.55f);
+            if (lines.size() * lineH <= quoteAreaHeight) break;
+            size -= 5f;
+        }
+        if (lines == null) lines = new ArrayList<>();
+        int lineH = (int) (p.getTextSize() * 1.55f);
+        int totalH = lines.size() * lineH;
+        int y = quoteAreaTop + (quoteAreaHeight - totalH) / 2 + lineH
+                - (int) (p.getTextSize() * 0.25f);
+
+        boolean left = "left".equals(Prefs.align(ctx));
+        Paint.FontMetrics fm = p.getFontMetrics();
+        for (String line : lines) {
+            float w = p.measureText(line);
+            float x = left ? margin : (W - w) / 2f;
+            c.drawText(line, x, y - fm.ascent, p);
+            y += lineH;
+        }
+
+        // 出处：—— 作者《作品》· 章节/集数/时间戳
+        String who = author.isEmpty() ? "佚名" : author;
+        StringBuilder attribution = new StringBuilder("—— ").append(who);
+        if (!work.isEmpty()) attribution.append("《").append(work).append("》");
+        if (!location.isEmpty()) attribution.append(" · ").append(location);
+
+        Paint small = new Paint(Paint.ANTI_ALIAS_FLAG);
+        small.setColor(fgColor);
+        small.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        small.setTextSize(38f);
+        List<String> attrLines = wrap(attribution.toString(), small, maxWidth);
+        int attrY = quoteAreaBottom + 90;
+        for (String line : attrLines) {
+            float w = small.measureText(line);
+            float x = left ? margin : (W - w) / 2f;
+            c.drawText(line, x, attrY, small);
+            attrY += (int) (38f * 1.45f);
+        }
+
+        if (footer) {
+            Paint foot = new Paint(Paint.ANTI_ALIAS_FLAG);
+            foot.setColor(fgColor);
+            foot.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+            foot.setTextSize(30f);
+            String footerText = "墨读 · "
+                    + new SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.CHINA).format(new Date());
+            c.drawText(footerText, margin, H - 90, foot);
+        }
+        return bmp;
+    }
+
+    private static String readAll(InputStream in) throws Exception {
+        try (InputStream input = in;
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = input.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString(StandardCharsets.UTF_8.name());
+        }
     }
 
     private static Bitmap loadFromUrl(Context ctx) throws Exception {

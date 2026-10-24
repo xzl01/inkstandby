@@ -92,7 +92,103 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="语录列表（每次随机选一条）" />
+
+            <RadioButton
+                android:id="@+id/rbInkQuote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="引据 InkQuote（带出处的每日一句）" />
         </RadioGroup>
+
+        <LinearLayout
+            android:id="@+id/inkquoteBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/inkquoteUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="InkQuote 服务地址，如 http://192.168.100.168:8765"
+                android:inputType="textUri"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="分类"
+                android:textColor="#333333"
+                android:textSize="14sp" />
+
+            <RadioGroup
+                android:id="@+id/inkquoteCategoryGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rbInkAll"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="全部" />
+
+                <RadioButton
+                    android:id="@+id/rbInkBook"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="书本" />
+
+                <RadioButton
+                    android:id="@+id/rbInkInternet"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="互联网" />
+
+                <RadioButton
+                    android:id="@+id/rbInkAnime"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="动漫" />
+
+                <RadioButton
+                    android:id="@+id/rbInkMovie"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="电影" />
+            </RadioGroup>
+
+            <CheckBox
+                android:id="@+id/cbInkVerified"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="仅使用已核对出处的条目" />
+
+            <CheckBox
+                android:id="@+id/cbInkDaily"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="每日一句（关闭则每次亮屏随机）" />
+
+            <Button
+                android:id="@+id/testInkQuote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="测试连接并预览" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="连不上时自动使用上一次缓存；再失败则用内置的 21 条离线数据。"
+                android:textColor="#555555"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <EditText
             android:id="@+id/filePath"

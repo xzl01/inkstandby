@@ -9,6 +9,7 @@ final class Prefs {
     static final String MODE_URL = "url";
     static final String MODE_TEXT = "text";
     static final String MODE_QUOTES = "quotes";
+    static final String MODE_INKQUOTE = "inkquote";
 
     static SharedPreferences sp(Context c) {
         return c.getSharedPreferences("inkstandby", Context.MODE_PRIVATE);
@@ -28,6 +29,12 @@ final class Prefs {
     static String fit(Context c) { return sp(c).getString("fit", "fit"); } // fit/crop/stretch
     static String bg(Context c) { return sp(c).getString("bg", "white"); } // white/black
     static boolean skipUnchanged(Context c) { return sp(c).getBoolean("skip_unchanged", true); }
+    static String inkquoteUrl(Context c) {
+        return sp(c).getString("inkquote_url", "http://192.168.100.168:8765");
+    }
+    static String inkquoteCategory(Context c) { return sp(c).getString("inkquote_category", ""); }
+    static boolean inkquoteVerified(Context c) { return sp(c).getBoolean("inkquote_verified", true); }
+    static boolean inkquoteDaily(Context c) { return sp(c).getBoolean("inkquote_daily", true); }
     static String lastHash(Context c) { return sp(c).getString("last_hash", ""); }
     static void setLastHash(Context c, String hash) { sp(c).edit().putString("last_hash", hash).apply(); }
 
@@ -42,6 +49,15 @@ final class Prefs {
                 .putString("url", url)
                 .putString("text", text)
                 .putBoolean("enabled", enabled)
+                .apply();
+    }
+
+    static void saveInkQuote(Context c, String url, String category, boolean verified, boolean daily) {
+        sp(c).edit()
+                .putString("inkquote_url", url)
+                .putString("inkquote_category", category)
+                .putBoolean("inkquote_verified", verified)
+                .putBoolean("inkquote_daily", daily)
                 .apply();
     }
 

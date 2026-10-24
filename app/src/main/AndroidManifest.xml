@@ -7,6 +7,7 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:icon="@android:drawable/ic_menu_gallery"
         android:label="墨屏待机"
         android:theme="@android:style/Theme.DeviceDefault.Light">
