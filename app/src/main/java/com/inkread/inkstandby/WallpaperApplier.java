@@ -480,7 +480,9 @@ public final class WallpaperApplier {
         String who = author.isEmpty() ? "佚名" : author;
         StringBuilder attribution = new StringBuilder("—— ").append(who);
         if (!work.isEmpty()) attribution.append("《").append(work).append("》");
-        if (!location.isEmpty()) attribution.append(" · ").append(location);
+        if (!location.isEmpty() && !location.equals(work)) {
+            attribution.append(" · ").append(location);
+        }
 
         Paint small = new Paint(Paint.ANTI_ALIAS_FLAG);
         small.setColor(fgColor);

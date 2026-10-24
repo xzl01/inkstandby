@@ -200,7 +200,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="连不上时自动使用上一次缓存；再失败则用内置的 21 条离线数据。"
+                android:text="连不上时自动使用整批缓存；再失败则用内置的 50 条离线数据。"
                 android:textColor="#555555"
                 android:textSize="12sp" />
         </LinearLayout>
