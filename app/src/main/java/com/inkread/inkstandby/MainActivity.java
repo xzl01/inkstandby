@@ -1,13 +1,15 @@
 package com.inkread.inkstandby;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
@@ -21,11 +23,16 @@ import java.io.OutputStream;
 public class MainActivity extends Activity {
     private static final int REQ_PICK = 42;
 
-    private TextView status;
-    private RadioGroup modeGroup;
-    private RadioButton rbFile, rbUrl, rbText;
-    private EditText filePath, url, textTemplate;
-    private TextView tips;
+    private TextView status, tips;
+    private ImageView preview;
+    private RadioGroup modeGroup, fontGroup, alignGroup, fitGroup, bgGroup;
+    private RadioButton rbFile, rbUrl, rbText, rbQuotes;
+    private RadioButton rbFontSmall, rbFontNormal, rbFontLarge;
+    private RadioButton rbAlignCenter, rbAlignLeft;
+    private RadioButton rbFit, rbCrop, rbStretch;
+    private RadioButton rbBgWhite, rbBgBlack;
+    private CheckBox cbFooter, cbSkip;
+    private EditText filePath, url, textTemplate, quotesText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,20 +40,47 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         status = findViewById(R.id.status);
+        tips = findViewById(R.id.tips);
+        preview = findViewById(R.id.preview);
+
         modeGroup = findViewById(R.id.modeGroup);
         rbFile = findViewById(R.id.rbFile);
         rbUrl = findViewById(R.id.rbUrl);
         rbText = findViewById(R.id.rbText);
+        rbQuotes = findViewById(R.id.rbQuotes);
+
         filePath = findViewById(R.id.filePath);
         url = findViewById(R.id.url);
         textTemplate = findViewById(R.id.textTemplate);
-        tips = findViewById(R.id.tips);
+        quotesText = findViewById(R.id.quotesText);
+
+        fontGroup = findViewById(R.id.fontGroup);
+        rbFontSmall = findViewById(R.id.rbFontSmall);
+        rbFontNormal = findViewById(R.id.rbFontNormal);
+        rbFontLarge = findViewById(R.id.rbFontLarge);
+
+        alignGroup = findViewById(R.id.alignGroup);
+        rbAlignCenter = findViewById(R.id.rbAlignCenter);
+        rbAlignLeft = findViewById(R.id.rbAlignLeft);
+
+        fitGroup = findViewById(R.id.fitGroup);
+        rbFit = findViewById(R.id.rbFit);
+        rbCrop = findViewById(R.id.rbCrop);
+        rbStretch = findViewById(R.id.rbStretch);
+
+        bgGroup = findViewById(R.id.bgGroup);
+        rbBgWhite = findViewById(R.id.rbBgWhite);
+        rbBgBlack = findViewById(R.id.rbBgBlack);
+
+        cbFooter = findViewById(R.id.cbFooter);
+        cbSkip = findViewById(R.id.cbSkip);
 
         loadPrefs();
         modeGroup.setOnCheckedChangeListener((group, checkedId) -> updateVisibility());
         updateVisibility();
 
         findViewById(R.id.pickFile).setOnClickListener(v -> pickImage());
+        findViewById(R.id.testUrl).setOnClickListener(v -> testUrl());
         findViewById(R.id.applyNow).setOnClickListener(v -> {
             savePrefs();
             applyNow();
@@ -58,10 +92,10 @@ public class MainActivity extends Activity {
 
         if (Prefs.firstLaunch(this)) {
             Prefs.setFirstLaunchDone(this);
-            tips.setText("提示：需要先保证 /data/local/iflytek/wallpaper 可写（本机已设置过）。"
-                    + "亮屏自动更新由后台服务完成，通知栏会有一个低优先级常驻通知。");
+            tips.setText("提示：亮屏自动更新由后台服务完成，通知栏有一个低优先级常驻通知。"
+                    + "「立即应用（强制刷新）」可手动覆盖当前待机图。");
         } else {
-            tips.setText("亮屏自动更新已启用；若更新失败请检查内容源和目录权限。");
+            tips.setText("亮屏自动更新已启用；内容不变时会自动跳过，减少墨水屏刷新。");
         }
 
         startServiceCompat();
@@ -71,44 +105,88 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         status.setText("上次：" + WallpaperApplier.lastStatus(this));
+        loadPreview();
     }
 
     private void loadPrefs() {
         String mode = Prefs.mode(this);
         if (Prefs.MODE_FILE.equals(mode)) modeGroup.check(R.id.rbFile);
         else if (Prefs.MODE_URL.equals(mode)) modeGroup.check(R.id.rbUrl);
+        else if (Prefs.MODE_QUOTES.equals(mode)) modeGroup.check(R.id.rbQuotes);
         else modeGroup.check(R.id.rbText);
+
         filePath.setText(Prefs.filePath(this));
         url.setText(Prefs.url(this));
         textTemplate.setText(Prefs.text(this));
+        quotesText.setText(Prefs.quotes(this));
+
+        int scale = Prefs.fontScale(this);
+        fontGroup.check(scale == 0 ? R.id.rbFontSmall : (scale == 2 ? R.id.rbFontLarge : R.id.rbFontNormal));
+        alignGroup.check("left".equals(Prefs.align(this)) ? R.id.rbAlignLeft : R.id.rbAlignCenter);
+        cbFooter.setChecked(Prefs.footer(this));
+
+        String fit = Prefs.fit(this);
+        fitGroup.check("stretch".equals(fit) ? R.id.rbStretch : ("crop".equals(fit) ? R.id.rbCrop : R.id.rbFit));
+        bgGroup.check("black".equals(Prefs.bg(this)) ? R.id.rbBgBlack : R.id.rbBgWhite);
+        cbSkip.setChecked(Prefs.skipUnchanged(this));
+
         status.setText("上次：" + WallpaperApplier.lastStatus(this));
     }
 
     private void updateVisibility() {
         boolean f = rbFile.isChecked();
         boolean u = rbUrl.isChecked();
+        boolean t = rbText.isChecked();
+        boolean q = rbQuotes.isChecked();
+
         filePath.setVisibility(f ? android.view.View.VISIBLE : android.view.View.GONE);
         findViewById(R.id.pickFile).setVisibility(f ? android.view.View.VISIBLE : android.view.View.GONE);
         url.setVisibility(u ? android.view.View.VISIBLE : android.view.View.GONE);
-        textTemplate.setVisibility((!f && !u) ? android.view.View.VISIBLE : android.view.View.GONE);
+        findViewById(R.id.testUrl).setVisibility(u ? android.view.View.VISIBLE : android.view.View.GONE);
+        textTemplate.setVisibility(t ? android.view.View.VISIBLE : android.view.View.GONE);
+        quotesText.setVisibility(q ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
     private void savePrefs() {
         String mode = rbFile.isChecked() ? Prefs.MODE_FILE
-                : (rbUrl.isChecked() ? Prefs.MODE_URL : Prefs.MODE_TEXT);
+                : (rbUrl.isChecked() ? Prefs.MODE_URL
+                : (rbQuotes.isChecked() ? Prefs.MODE_QUOTES : Prefs.MODE_TEXT));
         Prefs.save(this, mode,
                 filePath.getText().toString().trim(),
                 url.getText().toString().trim(),
                 textTemplate.getText().toString(),
                 true);
+
+        int scale = rbFontSmall.isChecked() ? 0 : (rbFontLarge.isChecked() ? 2 : 1);
+        String align = rbAlignLeft.isChecked() ? "left" : "center";
+        String fit = rbStretch.isChecked() ? "stretch" : (rbCrop.isChecked() ? "crop" : "fit");
+        String bg = rbBgBlack.isChecked() ? "black" : "white";
+        Prefs.saveOptions(this, quotesText.getText().toString(), scale, align,
+                cbFooter.isChecked(), fit, bg, cbSkip.isChecked());
     }
 
     private void applyNow() {
         status.setText("正在更新…");
-        WallpaperApplier.applyAsync(this, (ok, msg) -> runOnUiThread(() -> {
+        WallpaperApplier.applyAsync(this, true, (ok, msg) -> runOnUiThread(() -> {
             status.setText((ok ? "✓ " : "✗ ") + msg);
+            loadPreview();
             toast(ok ? "已更新待机图" : "失败：" + msg);
         }));
+    }
+
+    private void testUrl() {
+        savePrefs();
+        status.setText("正在测试 URL…");
+        WallpaperApplier.testUrlAsync(this, (ok, msg) -> runOnUiThread(() -> {
+            status.setText((ok ? "✓ " : "✗ ") + msg);
+            toast(msg);
+        }));
+    }
+
+    private void loadPreview() {
+        Bitmap bmp = WallpaperApplier.lastBitmap(this);
+        if (bmp != null) preview.setImageBitmap(bmp);
+        else preview.setImageDrawable(null);
     }
 
     private void pickImage() {

@@ -16,7 +16,7 @@ public class ScreenOnReceiver extends BroadcastReceiver {
         final PendingResult pr = goAsync();
         new Thread(() -> {
             try {
-                WallpaperApplier.applySync(context);
+                WallpaperApplier.applySync(context, false);
             } catch (Throwable t) {
                 Log.w("InkStandby", "screen-on apply failed: " + t);
             } finally {

@@ -19,6 +19,7 @@ public class UpdateService extends Service {
     private static final String TAG = "InkStandby";
     private static final String CHANNEL = "inkstandby";
     private static final int NOTIFY_ID = 1001;
+    static final String ACTION_APPLY_NOW = "com.inkread.inkstandby.APPLY_NOW";
     private final Handler main = new Handler(Looper.getMainLooper());
     private long lastApplyAt = 0;
     private boolean receiverRegistered = false;
@@ -28,7 +29,7 @@ public class UpdateService extends Service {
         public void onReceive(Context context, Intent intent) {
             String a = intent == null ? null : intent.getAction();
             Log.i(TAG, "screen event: " + a);
-            apply("screen:" + a);
+            apply("screen:" + a, false);
         }
     };
 
@@ -42,12 +43,13 @@ public class UpdateService extends Service {
         f.addAction(Intent.ACTION_USER_PRESENT);
         registerReceiver(screenReceiver, f);
         receiverRegistered = true;
-        apply("service-create");
+        apply("service-create", true);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        apply("start-command");
+        boolean force = intent != null && ACTION_APPLY_NOW.equals(intent.getAction());
+        apply(force ? "manual" : "start-command", force);
         return START_STICKY;
     }
 
@@ -63,13 +65,13 @@ public class UpdateService extends Service {
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
-    private void apply(String reason) {
+    private void apply(String reason, boolean force) {
         if (!Prefs.enabled(this)) return;
         long now = System.currentTimeMillis();
-        if (now - lastApplyAt < 2000) return;
+        if (!force && now - lastApplyAt < 2000) return;
         lastApplyAt = now;
-        Log.i(TAG, "apply: " + reason);
-        WallpaperApplier.applyAsync(this, (ok, msg) -> Log.i(TAG, "apply done ok=" + ok + " " + msg));
+        Log.i(TAG, "apply: " + reason + (force ? " (force)" : ""));
+        WallpaperApplier.applyAsync(this, force, (ok, msg) -> Log.i(TAG, "apply done ok=" + ok + " " + msg));
     }
 
     private void createChannel() {
@@ -85,11 +87,15 @@ public class UpdateService extends Service {
         Intent i = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Intent apply = new Intent(this, UpdateService.class).setAction(ACTION_APPLY_NOW);
+        PendingIntent applyPi = PendingIntent.getService(this, 1, apply,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_menu_gallery)
                 .setContentTitle("墨屏待机")
                 .setContentText("亮屏时更新待机图")
                 .setContentIntent(pi)
+                .addAction(new Notification.Action.Builder(null, "立即更新", applyPi).build())
                 .setOngoing(true)
                 .build();
     }

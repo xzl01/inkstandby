@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:padding="24dp">
 
         <TextView
             android:layout_width="match_parent"
@@ -20,10 +20,18 @@
             android:textStyle="bold" />
 
         <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="v1.1.0 · 彩色墨水屏待机壁纸"
+            android:textColor="#666666"
+            android:textSize="13sp" />
+
+        <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:text="还没更新过"
             android:textColor="#000000"
             android:textSize="16sp" />
@@ -31,16 +39,34 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="更新时机：按下电源键退出待机（亮屏）时更新一次；开机时和点「立即应用」也会更新。"
+            android:layout_marginTop="16dp"
+            android:text="预览（最近一次应用）"
             android:textColor="#333333"
             android:textSize="14sp" />
+
+        <ImageView
+            android:id="@+id/preview"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:layout_marginTop="6dp"
+            android:background="#EEEEEE"
+            android:contentDescription="待机图预览"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="内容来源"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:textStyle="bold" />
 
         <RadioGroup
             android:id="@+id/modeGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="4dp"
             android:orientation="vertical">
 
             <RadioButton
@@ -60,6 +86,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="文字模板（按 e-ink 风格渲染）" />
+
+            <RadioButton
+                android:id="@+id/rbQuotes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="语录列表（每次随机选一条）" />
         </RadioGroup>
 
         <EditText
@@ -83,21 +115,193 @@
             android:inputType="textUri"
             android:textSize="14sp" />
 
+        <Button
+            android:id="@+id/testUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="测试下载并解码" />
+
         <EditText
             android:id="@+id/textTemplate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="top"
             android:hint="支持变量：{date} {time} {weekday} {battery}"
-            android:minLines="6"
+            android:minLines="5"
             android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/quotesText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="每行一条语录，亮屏时随机选一条"
+            android:minLines="5"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="文字排版"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="字号"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/fontGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbFontSmall"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="小" />
+
+            <RadioButton
+                android:id="@+id/rbFontNormal"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="中" />
+
+            <RadioButton
+                android:id="@+id/rbFontLarge"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="大" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="对齐"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/alignGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbAlignCenter"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="居中" />
+
+            <RadioButton
+                android:id="@+id/rbAlignLeft"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="左对齐" />
+        </RadioGroup>
+
+        <CheckBox
+            android:id="@+id/cbFooter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="显示底部时间/签名" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="图片模式"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="适配方式"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/fitGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbFit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="适应" />
+
+            <RadioButton
+                android:id="@+id/rbCrop"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="裁剪" />
+
+            <RadioButton
+                android:id="@+id/rbStretch"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="拉伸" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="背景色"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/bgGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbBgWhite"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="白" />
+
+            <RadioButton
+                android:id="@+id/rbBgBlack"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="黑" />
+        </RadioGroup>
+
+        <CheckBox
+            android:id="@+id/cbSkip"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="内容不变时跳过（减少墨水屏刷新）" />
 
         <Button
             android:id="@+id/applyNow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="立即应用" />
+            android:text="立即应用（强制刷新）" />
 
         <Button
             android:id="@+id/save"
@@ -109,8 +313,8 @@
             android:id="@+id/tips"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:textSize="12sp"
-            android:textColor="#555555" />
+            android:layout_marginTop="16dp"
+            android:textColor="#555555"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

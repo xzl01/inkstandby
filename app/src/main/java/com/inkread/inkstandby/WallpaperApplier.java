@@ -7,7 +7,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.BatteryManager;
 import android.util.Log;
@@ -19,11 +18,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 
 /**
  * 把内容渲染成 1264x1680 的待机图，并调用厂商隐藏 API
@@ -37,6 +38,9 @@ public final class WallpaperApplier {
     public static final String WALLPAPER_DIR = "/data/local/iflytek/wallpaper/";
     public static final int W = 1264;
     public static final int H = 1680;
+
+    private static final Object LOCK = new Object();
+    private static long lastInvokeAt = 0;
 
     public interface Callback {
         void done(boolean ok, String message);
@@ -59,10 +63,10 @@ public final class WallpaperApplier {
         }
     }
 
-    public static void applyAsync(final Context ctx, final Callback cb) {
+    public static void applyAsync(final Context ctx, final boolean force, final Callback cb) {
         new Thread(() -> {
             try {
-                String msg = applySync(ctx);
+                String msg = applySync(ctx, force);
                 if (cb != null) cb.done(true, msg);
             } catch (Throwable t) {
                 Log.e(TAG, "apply failed", t);
@@ -71,11 +75,35 @@ public final class WallpaperApplier {
         }, "inkstandby-apply").start();
     }
 
-    /** 同步生成并写入，返回摘要信息；失败抛异常。 */
+    public static void applyAsync(final Context ctx, final Callback cb) {
+        applyAsync(ctx, false, cb);
+    }
+
+    /** 同步生成并写入，返回摘要信息；失败抛异常。force=true 时忽略「内容未变」和防抖。 */
     public static String applySync(Context ctx) throws Exception {
+        return applySync(ctx, false);
+    }
+
+    public static String applySync(Context ctx, boolean force) throws Exception {
+        synchronized (LOCK) {
+            long now = System.currentTimeMillis();
+            if (!force && now - lastInvokeAt < 1200) return "跳过（防抖）";
+            lastInvokeAt = now;
+        }
         long t0 = System.currentTimeMillis();
         Bitmap portrait = loadPortrait(ctx);
         if (portrait == null) throw new IllegalStateException("无法得到内容图片");
+
+        ByteArrayOutputStream probe = new ByteArrayOutputStream();
+        portrait.compress(Bitmap.CompressFormat.PNG, 100, probe);
+        String hash = md5(probe.toByteArray());
+        if (!force && Prefs.skipUnchanged(ctx) && hash.equals(Prefs.lastHash(ctx))) {
+            Prefs.sp(ctx).edit()
+                    .putLong("last_time", System.currentTimeMillis())
+                    .putString("last_result", "内容未变化，已跳过")
+                    .apply();
+            return "内容未变化，已跳过";
+        }
 
         Bitmap land = rotate90(portrait);
         StringBuilder sb = new StringBuilder();
@@ -103,6 +131,7 @@ public final class WallpaperApplier {
             portrait.compress(Bitmap.CompressFormat.PNG, 100, fos);
         }
 
+        Prefs.setLastHash(ctx, hash);
         Prefs.sp(ctx).edit()
                 .putLong("last_time", System.currentTimeMillis())
                 .putString("last_result", "成功 " + okCount + "/3 · " + sb)
@@ -124,7 +153,7 @@ public final class WallpaperApplier {
 
     private static Bitmap loadPortrait(Context ctx) throws Exception {
         String mode = Prefs.mode(ctx);
-        Bitmap src = null;
+        Bitmap src;
         if (Prefs.MODE_FILE.equals(mode)) {
             String p = Prefs.filePath(ctx);
             if (p == null || p.isEmpty()) throw new IllegalStateException("未选择本地图片");
@@ -132,10 +161,23 @@ public final class WallpaperApplier {
             if (src == null) throw new IllegalStateException("无法解码图片: " + p);
         } else if (Prefs.MODE_URL.equals(mode)) {
             src = loadFromUrl(ctx);
+        } else if (Prefs.MODE_QUOTES.equals(mode)) {
+            src = renderText(ctx, pickQuote(ctx), true);
         } else {
-            src = renderText(ctx);
+            src = renderText(ctx, Prefs.text(ctx), false);
         }
-        return fitToPortrait(src);
+        return fitToPortrait(src, Prefs.fit(ctx), Prefs.bg(ctx));
+    }
+
+    private static String pickQuote(Context ctx) {
+        String[] arr = Prefs.quotes(ctx).split("\n");
+        List<String> list = new ArrayList<>();
+        for (String s : arr) {
+            String t = s.trim();
+            if (!t.isEmpty()) list.add(t);
+        }
+        if (list.isEmpty()) return "心静，则万物皆静。";
+        return list.get(new Random().nextInt(list.size()));
     }
 
     private static Bitmap loadFromUrl(Context ctx) throws Exception {
@@ -148,7 +190,7 @@ public final class WallpaperApplier {
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
             conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent", "InkStandby/1.0");
+            conn.setRequestProperty("User-Agent", "InkStandby/1.1");
             int code = conn.getResponseCode();
             if (code != 200) throw new java.io.IOException("HTTP " + code);
             try (InputStream in = conn.getInputStream();
@@ -174,57 +216,86 @@ public final class WallpaperApplier {
         }
     }
 
-    private static Bitmap renderText(Context ctx) {
-        String text = Prefs.text(ctx);
-        if (text == null) text = "";
-        text = text.replace("{date}", new SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(new Date()))
-                .replace("{time}", new SimpleDateFormat("HH:mm", Locale.CHINA).format(new Date()))
-                .replace("{weekday}", new SimpleDateFormat("EEEE", Locale.CHINA).format(new Date()))
-                .replace("{battery}", batteryPercent(ctx) + "%");
+    /** 测试 URL 是否能下载并解码为图片。 */
+    public static void testUrlAsync(final Context ctx, final Callback cb) {
+        new Thread(() -> {
+            try {
+                Bitmap b = loadFromUrl(ctx);
+                if (b == null) throw new IllegalStateException("无法解码");
+                if (cb != null) cb.done(true, "图片有效：" + b.getWidth() + "×" + b.getHeight());
+            } catch (Throwable t) {
+                if (cb != null) cb.done(false, t.getClass().getSimpleName() + ": " + t.getMessage());
+            }
+        }, "inkstandby-url-test").start();
+    }
+
+    private static Bitmap renderText(Context ctx, String raw, boolean quoteMode) {
+        String text = substitute(ctx, raw == null ? "" : raw);
+
+        boolean dark = "black".equals(Prefs.bg(ctx));
+        int bgColor = dark ? Color.BLACK : Color.WHITE;
+        int fgColor = dark ? Color.WHITE : Color.BLACK;
 
         Bitmap bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bmp);
-        c.drawColor(Color.WHITE);
+        c.drawColor(bgColor);
 
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(Color.BLACK);
+        p.setColor(fgColor);
         p.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-        p.setTextSize(72f);
         p.setSubpixelText(true);
+
+        int scale = Prefs.fontScale(ctx);
+        float factor = scale == 0 ? 0.82f : (scale == 2 ? 1.25f : 1f);
+        float base = (quoteMode ? 84f : 72f) * factor;
 
         int margin = 110;
         int maxWidth = W - margin * 2;
-        // 自动缩字号，最多 200，最小 40
-        float size = 72f;
+        boolean footer = Prefs.footer(ctx);
+        int bottomReserve = footer ? 240 : 110;
+
+        float size = base;
         List<String> lines = null;
-        while (size >= 40f) {
+        while (size >= 34f) {
             p.setTextSize(size);
             lines = wrap(text, p, maxWidth);
             int lineH = (int) (size * 1.55f);
-            if (lines.size() * lineH <= H - margin * 2 - 240) break;
-            size -= 6f;
+            if (lines.size() * lineH <= H - margin * 2 - bottomReserve) break;
+            size -= 5f;
         }
         if (lines == null) lines = new ArrayList<>();
         int lineH = (int) (p.getTextSize() * 1.55f);
         int totalH = lines.size() * lineH;
         int y = (H - totalH) / 2 + lineH - (int) (p.getTextSize() * 0.25f);
 
+        boolean left = "left".equals(Prefs.align(ctx));
         Paint.FontMetrics fm = p.getFontMetrics();
         for (String line : lines) {
             float w = p.measureText(line);
-            float x = (W - w) / 2f;
+            float x = left ? margin : (W - w) / 2f;
             c.drawText(line, x, y - fm.ascent, p);
             y += lineH;
         }
 
-        // 底部小字
-        Paint small = new Paint(Paint.ANTI_ALIAS_FLAG);
-        small.setColor(Color.BLACK);
-        small.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        small.setTextSize(34f);
-        String footer = "墨读 · " + new SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.CHINA).format(new Date());
-        c.drawText(footer, margin, H - margin / 2f, small);
+        if (footer) {
+            Paint small = new Paint(Paint.ANTI_ALIAS_FLAG);
+            small.setColor(fgColor);
+            small.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+            small.setTextSize(34f);
+            String footerText = "墨读 · "
+                    + new SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.CHINA).format(new Date());
+            c.drawText(footerText, margin, H - margin / 2f, small);
+        }
         return bmp;
+    }
+
+    private static String substitute(Context ctx, String text) {
+        int battery = batteryPercent(ctx);
+        return text
+                .replace("{date}", new SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(new Date()))
+                .replace("{time}", new SimpleDateFormat("HH:mm", Locale.CHINA).format(new Date()))
+                .replace("{weekday}", new SimpleDateFormat("EEEE", Locale.CHINA).format(new Date()))
+                .replace("{battery}", battery >= 0 ? battery + "%" : "--");
     }
 
     private static List<String> wrap(String text, Paint paint, int maxWidth) {
@@ -236,6 +307,13 @@ public final class WallpaperApplier {
                 char ch = para.charAt(i);
                 String trial = line.toString() + ch;
                 if (paint.measureText(trial) > maxWidth && line.length() > 0) {
+                    // 标点悬挂：避免中文句号/逗号被挤到下一行，形成「孤字」
+                    if (isClosingPunctuation(ch)) {
+                        line.append(ch);
+                        out.add(line.toString());
+                        line.setLength(0);
+                        continue;
+                    }
                     out.add(line.toString());
                     line.setLength(0);
                 }
@@ -244,6 +322,10 @@ public final class WallpaperApplier {
             out.add(line.toString());
         }
         return out;
+    }
+
+    private static boolean isClosingPunctuation(char ch) {
+        return "。，、；：！？）》」』】”’…—,.!?;:)]}".indexOf(ch) >= 0;
     }
 
     private static int batteryPercent(Context ctx) {
@@ -256,12 +338,24 @@ public final class WallpaperApplier {
 
     // ------------------------------------------------------------ bitmap
 
-    private static Bitmap fitToPortrait(Bitmap src) {
-        if (src.getWidth() == W && src.getHeight() == H) return src;
+    private static Bitmap fitToPortrait(Bitmap src, String fit, String bg) {
+        if (src == null) return null;
+        int bgColor = "black".equals(bg) ? Color.BLACK : Color.WHITE;
+        if (src.getWidth() == W && src.getHeight() == H && !"stretch".equals(fit)) return src;
+
         Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
-        c.drawColor(Color.WHITE);
-        float scale = Math.min((float) W / src.getWidth(), (float) H / src.getHeight());
+        c.drawColor(bgColor);
+
+        if ("stretch".equals(fit)) {
+            Bitmap stretched = Bitmap.createScaledBitmap(src, W, H, true);
+            c.drawBitmap(stretched, 0f, 0f, null);
+            return out;
+        }
+
+        float sx = (float) W / src.getWidth();
+        float sy = (float) H / src.getHeight();
+        float scale = "crop".equals(fit) ? Math.max(sx, sy) : Math.min(sx, sy);
         int dw = Math.max(1, Math.round(src.getWidth() * scale));
         int dh = Math.max(1, Math.round(src.getHeight() * scale));
         Bitmap scaled = Bitmap.createScaledBitmap(src, dw, dh, true);
@@ -273,6 +367,17 @@ public final class WallpaperApplier {
         Matrix m = new Matrix();
         m.postRotate(90);
         return Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true);
+    }
+
+    private static String md5(byte[] data) {
+        try {
+            byte[] d = MessageDigest.getInstance("MD5").digest(data);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format(Locale.US, "%02x", b));
+            return sb.toString();
+        } catch (Throwable t) {
+            return String.valueOf(data.length);
+        }
     }
 
     // ------------------------------------------------------------ hidden API
